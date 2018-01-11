@@ -10,16 +10,23 @@ from tl_classifier import TLClassifier
 # path to the frozen tensorflow model (protobuf)
 model_file = currentdir + "/../../models/frozen_classifier_model.pb"
 
-# test image is a cutout of a detected traffic light
-img_cutout = cv2.imread(currentdir + "/sample_tl_cutout.png")
-print ("shape of input image: " + str(img_cutout.shape))
-
-# create classifier
+# create classifier by reading the frozen model file
 light_classifier = TLClassifier(model_file)
 
-# classify cutout image
-detected_color_id = light_classifier.get_classification(img_cutout)
+# test images (cutout of a detected traffic light)
+image_files = ["sample_tl_cutout_yellow_1.png", "traffic_light_red_1.png", "traffic_light_green_1.png", "traffic_light_red_2.png"]
 
-# print result
-print("detected color-id is: " + str(detected_color_id))
+# classify every sample image and print the results
+for image_file in image_files:
+    
+    image = cv2.imread(currentdir + "/" + image_file)
+    print("----")
+    print ("classifying image " + image_file)
+    print ("shape of input image: " + str(image.shape))
+
+    # classify cutout image
+    detected_color_id = light_classifier.get_classification(image)
+
+    # print result
+    print("detected color-id is: " + str(detected_color_id))
 
