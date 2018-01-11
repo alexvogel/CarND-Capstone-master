@@ -188,6 +188,8 @@ class TLDetector(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
+        lights_state = TrafficLight.UNKNOWN
+        
         if(not self.has_image):
             self.prev_light_loc = None
             return False
@@ -200,7 +202,8 @@ class TLDetector(object):
         image2PIL = PIL.Image.fromarray(cv_image)
 
         lights_boxed = self.light_detector.detect_traffic_lights(image2PIL)
-        lights_state = self.light_classifier.get_classification(np.array(lights_boxed[0]))
+        if len(lights_boxed) > 0:
+            lights_state = self.light_classifier.get_classification(np.array(lights_boxed[0]))
         
         return lights_state
         
