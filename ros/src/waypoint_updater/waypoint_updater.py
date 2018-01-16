@@ -26,7 +26,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 60 # Number of waypoints we will publish. You can change this number
-MAX_SPD = 20 * 0.44704 *0.8 # max speed in mps
+MAX_SPD = 40 * 0.44704 *0.8 # max speed in mps
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -69,38 +69,15 @@ class WaypointUpdater(object):
 
     def loop(self):
         # the main publisher loop
-        rate = rospy.Rate(20) # <40hz
+        rate = rospy.Rate(10) # <40hz
         
+        # prevent errors
         while (self.pose is None) or (self.waypoints is None):
             rate.sleep()
         
         while not rospy.is_shutdown():
             
-            # prevent errors
-            if (self.pose is None) or (self.waypoints is None):
-                continue            
-            
-            #init variables to calc distance
-            closest_distance = 10000000.0 
-            closestWaypoint_ind = 0
-            start = 0
-            end   = self.len_waypoints
-            
-            # calculate distances, save closest
-            for i in range(start, end):
-                wp_x = self.waypoints[i].pose.pose.position.x
-                wp_y = self.waypoints[i].pose.pose.position.y
-                wp_z = self.waypoints[i].pose.pose.position.z
-                
-                c_x = self.pose.position.x
-                c_y = self.pose.position.y
-                c_z = self.pose.position.z
-                dist = math.sqrt( (wp_x-c_x)**2 + (wp_y-c_y)**2 + (wp_z-c_z)**2 )
-                
-                if(dist < closest_distance):
-                    #save index
-                    closestWaypoint_ind = i
-                    
+            closestWaypoint_ind = self.get_curr_waypoint_index()
             # distance between car and closest
             wp_x = self.waypoints[closestWaypoint_ind].pose.pose.position.x
             wp_y = self.waypoints[closestWaypoint_ind].pose.pose.position.x
@@ -118,32 +95,35 @@ class WaypointUpdater(object):
             # use index as starting point
             l_start = closestWaypoint_ind
             
-            
+            # create local variable with only relevant waypoints
             waypoints = self.waypoints[l_start:l_start + self.len_final_waypoints]
             
             # print out debug info
             if(self.curr_velocity is not None):
                 rospy.loginfo("Start - {}  Red Light - {} Current Velocity - {}".format(l_start, self.red_tl_wp,self.curr_velocity.twist.linear.x))               
             
-            # set up speed
-            for wp in waypoints:
-                self.set_waypoint_velocity(waypoints, wp, MAX_SPD)
+            # set up max speed
+            for wp, waypoint in enumerate(waypoints):
+                self.set_waypoint_velocity(self.waypoints, closestWaypoint_ind+wp, MAX_SPD)
             
-            
+            # clean up 
             if l_start + LOOKAHEAD_WPS >= self.len_waypoints:
                 for wp in waypoints[-10:]:
-                    self.set_waypoint_velocity(waypoints, wp, 0)
+                    self.set_waypoint_velocity(self.waypoints, closestWaypoint_ind-wp, 0)
             
-            if self.red_tl_wp != None and self.red_tl_wp >= l_start:
+            # if we have information about red light
+            if self.red_tl_wp != None and self.red_tl_wp > 0:
                 
+                # wp with red light --(minus)-- curr wp
                 distance_to_red = max(0, self.red_tl_wp - l_start)
-                # chop to stay in array boundaries       
+                      
                 rospy.loginfo("distance_to_red ind --- {}".format(distance_to_red))
-                distance_to_red = min(distance_to_red, len(waypoints)-1)
+                # chop to stay in array boundaries 
+                #distance_to_red = min(distance_to_red, self.len_final_waypoints-1)
                 wp_stop = waypoints[distance_to_red]
                 
                 # get distance to traffic light
-                distance_to_red = int(max(0, self.cal_distance(waypoints[0], wp_stop.pose)-2))
+                distance_to_red = max(0, self.cal_distance(self.waypoints[l_start], wp_stop.pose)-2)
                 rospy.loginfo("Stop in - {}".format(distance_to_red))
                 
                 # use distance to set up waypoints
@@ -158,7 +138,9 @@ class WaypointUpdater(object):
                 
                         
             final_waypoints = self.get_final_waypoints()
+            #rospy.loginfo("Final waypoint debug    -------- {}".format(final_waypoints))
             self.final_waypoints_pub.publish(final_waypoints)
+            
             
             rate.sleep()
             
@@ -173,15 +155,11 @@ class WaypointUpdater(object):
     
         
     def get_final_waypoints(self):
-        new_waypoints = []
+        
         curr_waypoint_i = self.get_curr_waypoint_index()
-        for i in range(self.len_final_waypoints):
-            i_next_waypoint = (curr_waypoint_i+i)%self.len_waypoints
-            new_waypoints.append(self.waypoints[i_next_waypoint])
-                
-                
+        
         lane = Lane()
-        lane.waypoints=new_waypoints
+        lane.waypoints= [self.waypoints[curr_waypoint_i+i] for i in range(self.len_final_waypoints)]
         lane.header.frame_id = self.full_waypoints.header.frame_id
         lane.header.stamp = rospy.Time.now()
         return lane
