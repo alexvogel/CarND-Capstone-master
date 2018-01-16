@@ -26,7 +26,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 60 # Number of waypoints we will publish. You can change this number
-MAX_SPD = 40 * 0.44704 *0.8 # max speed in mps
+MAX_SPD = 20 * 0.44704 *0.8 # max speed in mps
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -120,7 +120,7 @@ class WaypointUpdater(object):
                 rospy.loginfo("distance_to_red ind --- {}".format(distance_to_red))
                 # chop to stay in array boundaries 
                 #distance_to_red = min(distance_to_red, self.len_final_waypoints-1)
-                wp_stop = waypoints[distance_to_red]
+                wp_stop = self.waypoints[l_start + distance_to_red-100]
                 
                 # get distance to traffic light
                 distance_to_red = max(0, self.cal_distance(self.waypoints[l_start], wp_stop.pose)-2)
@@ -132,11 +132,13 @@ class WaypointUpdater(object):
                     distance_to_red = max(0, distance_to_red - 2)
                     velocity = math.sqrt(distance_to_red)
                     if velocity < 1.0:
-                        self.waypoints[waypoint_index].twist.twist.linear.x = 0
+                        self.waypoints[l_start+waypoint_index].twist.twist.linear.x = 0
                     elif velocity < waypoint.twist.twist.linear.x:
-                        self.waypoints[waypoint_index].twist.twist.linear.x = velocity
+                        self.waypoints[l_start+waypoint_index].twist.twist.linear.x = velocity
+            else:
+                #add unstuck
+                pass
                 
-                        
             final_waypoints = self.get_final_waypoints()
             #rospy.loginfo("Final waypoint debug    -------- {}".format(final_waypoints))
             self.final_waypoints_pub.publish(final_waypoints)
