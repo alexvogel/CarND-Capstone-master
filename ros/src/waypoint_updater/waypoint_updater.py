@@ -32,8 +32,8 @@ class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
-        self.current_pos_sub = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         
         rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb)
@@ -47,8 +47,7 @@ class WaypointUpdater(object):
 
         # TODO: Add other member variables you need below
 
-        # same as LOOKAHEAD_WPS ?  
-        self.len_final_waypoints = LOOKAHEAD_WPS
+        
         self.len_waypoints = 9999
         # car position
         self.pose = None
@@ -70,6 +69,7 @@ class WaypointUpdater(object):
     def loop(self):
         # the main publisher loop
         rate = rospy.Rate(10) # <40hz
+        
         
         # prevent errors
         while (self.pose is None) or (self.waypoints is None):
@@ -96,49 +96,61 @@ class WaypointUpdater(object):
             l_start = closestWaypoint_ind
             
             # create local variable with only relevant waypoints
-            waypoints = self.waypoints[l_start:l_start + self.len_final_waypoints]
+            #waypoints = self.waypoints[l_start:l_start + self.len_final_waypoints]
             
             # print out debug info
             if(self.curr_velocity is not None):
                 rospy.loginfo("Start - {}  Red Light - {} Current Velocity - {}".format(l_start, self.red_tl_wp,self.curr_velocity.twist.linear.x))               
             
             # set up max speed
-            for wp, waypoint in enumerate(waypoints):
-                self.set_waypoint_velocity(self.waypoints, closestWaypoint_ind+wp, MAX_SPD)
+            for wp in range (LOOKAHEAD_WPS):
+            #for wp, waypoint in enumerate(waypoints):
+                self.set_waypoint_velocity(self.waypoints, l_start+wp, MAX_SPD)
             
             # clean up 
             if l_start + LOOKAHEAD_WPS >= self.len_waypoints:
-                for wp in waypoints[-10:]:
-                    self.set_waypoint_velocity(self.waypoints, closestWaypoint_ind-wp, 0)
+                for wp in self.waypoints[-10:]:
+                    self.set_waypoint_velocity(self.waypoints, l_start-wp, 0)
             
             # if we have information about red light
             if self.red_tl_wp != None and self.red_tl_wp > 0:
-                
+                '''
                 # wp with red light --(minus)-- curr wp
+                # "-20" - offsets car from the center of the road
                 distance_to_red = max(0, self.red_tl_wp - l_start)
                       
                 rospy.loginfo("distance_to_red ind --- {}".format(distance_to_red))
                 # chop to stay in array boundaries 
-                #distance_to_red = min(distance_to_red, self.len_final_waypoints-1)
-                wp_stop = self.waypoints[l_start + distance_to_red-100]
+                distance_to_red = min(distance_to_red, LOOKAHEAD_WPS-1)
+                
+                wp_stop = self.waypoints[l_start+distance_to_red]
+                '''
+                wp_stop = self.waypoints[self.red_tl_wp]
+                #wp_stop = self.waypoints[self.red_tl_wp-20]
                 
                 # get distance to traffic light
-                distance_to_red = max(0, self.cal_distance(self.waypoints[l_start], wp_stop.pose)-2)
+                distance_to_red = self.cal_distance(self.waypoints[l_start], wp_stop.pose)
                 rospy.loginfo("Stop in - {}".format(distance_to_red))
                 
+                #if distance_to_red < 30:
                 # use distance to set up waypoints
-                for waypoint_index, waypoint in enumerate(waypoints):
-                    distance_to_red = self.cal_distance(waypoint, wp_stop.pose)
-                    distance_to_red = max(0, distance_to_red - 2)
-                    velocity = math.sqrt(distance_to_red)
-                    if velocity < 1.0:
-                        self.waypoints[l_start+waypoint_index].twist.twist.linear.x = 0
-                    elif velocity < waypoint.twist.twist.linear.x:
-                        self.waypoints[l_start+waypoint_index].twist.twist.linear.x = velocity
-            else:
-                #add unstuck
-                pass
+                for wp in range (300):
+                #for waypoint_index, waypoint in enumerate(waypoints):
+                    #distance_to_red = self.cal_distance(self.waypoints[l_start+wp], wp_stop.pose)
                 
+                    #velocity = math.sqrt(distance_to_red)
+                    #if velocity < 15.0:
+                    self.waypoints[l_start+wp].twist.twist.linear.x = 0
+                    #elif velocity < self.waypoints[l_start+wp].twist.twist.linear.x:
+                    #    self.waypoints[l_start+wp].twist.twist.linear.x = velocity
+            
+            #unstuck
+            if self.red_tl_wp == -1 or self.red_tl_wp == 0:
+                for wp in range (LOOKAHEAD_WPS):
+                    self.set_waypoint_velocity(self.waypoints, l_start-2+wp, MAX_SPD)
+                    #rospy.loginfo("no red")
+               
+            
             final_waypoints = self.get_final_waypoints()
             #rospy.loginfo("Final waypoint debug    -------- {}".format(final_waypoints))
             self.final_waypoints_pub.publish(final_waypoints)
@@ -161,7 +173,7 @@ class WaypointUpdater(object):
         curr_waypoint_i = self.get_curr_waypoint_index()
         
         lane = Lane()
-        lane.waypoints= [self.waypoints[curr_waypoint_i+i] for i in range(self.len_final_waypoints)]
+        lane.waypoints= [self.waypoints[curr_waypoint_i+i] for i in range(LOOKAHEAD_WPS)]
         lane.header.frame_id = self.full_waypoints.header.frame_id
         lane.header.stamp = rospy.Time.now()
         return lane
@@ -171,13 +183,20 @@ class WaypointUpdater(object):
         min_d= 9999999;
         pos_x = self.pose.position.x
         pos_y = self.pose.position.y
+        pos_z = self.pose.position.z
         for i, w in enumerate(self.waypoints):
+            #self.cal_distance(self, w, self.pose)
+        
             w_x = w.pose.pose.position.x
             w_y = w.pose.pose.position.y
-            distance = math.sqrt( ((pos_x-w_x)**2) + ((pos_y-w_y)**2)  )
+            w_z = w.pose.pose.position.z
+            
+            distance = math.sqrt((w_x-pos_x)**2 + (w_y-pos_y)**2 + (w_z-pos_z)**2)
             if distance < min_d:
                 min_d = distance
                 min_i = i
+                
+        
         return min_i
 
     def pose_cb(self, msg):
