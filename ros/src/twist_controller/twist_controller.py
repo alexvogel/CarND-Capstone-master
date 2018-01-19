@@ -36,7 +36,7 @@ class Controller(object):
         throttle = self.pid_throttle_brake.step(error_v, sample_time)
         brake = 0
         if throttle < 0 :
-            brake = -throttle
+            brake = -throttle*5
             throttle = 0
         
         return throttle,brake 
@@ -51,6 +51,13 @@ class Controller(object):
         if dbw_enabled:
             throttle, brake  = self.get_throttle_brake(target_v, curr_v, sample_time)
             steering = self.get_steering(target_ang_v, curr_ang_v, sample_time, target_v, curr_v)
+            
+            if brake < 5 and target_v.x < 1:
+                brake = 5
+            if curr_v.x <= 1 and target_v.x <= 1:
+                brake = 1
+            #rospy.loginfo("throttle - {}  brake - {} ".format(throttle, brake))
+            #rospy.loginfo("target_v - {}  curr_v - {} ".format(target_v, curr_v))
         else:
             pass
         return throttle, brake, steering
